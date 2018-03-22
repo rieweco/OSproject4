@@ -2,6 +2,10 @@ README FILE
 
 Cody Riewerts
 
+GIT Repository:
+https://github.com/rieweco/OSproject4.git
+
+
 -----------------------------------
 # Please enter the commit message for your changes. Lines starting
 # with '#' will be ignored, and an empty message aborts the commit.
@@ -16,5 +20,22 @@ Cody Riewerts
 #       new file:   queue.c
 #
 -----------------------------------
+
+# Please enter the commit message for your changes. Lines starting
+# with '#' will be ignored, and an empty message aborts the commit.
+#
+# Committer: Cody Riewerts <o2-riewerts@hoare7.cs.umsl.edu>
+#
+# On branch master
+# Changes to be committed:
+#   (use "git reset HEAD <file>..." to unstage)
+#
+#       modified:   README
+#       new file:   child.c
+#       new file:   node.h
+#       new file:   oss
+#       modified:   oss.c
+#       deleted:    queue.c
+___________________________________
 
 
