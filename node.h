@@ -3,14 +3,20 @@
 #ifndef NODE_H
 #define NODE_H
 
+//shared memory keys
+#define PCB_KEY 1200
+#define CLOCK_KEY 1400
+
 
 //child struct that holds the child number and its pid
-typedef struct ChildProcess
+typedef struct ProcessControlBlock
 {
         int childNumber;
         pid_t childID;
+	int priority;
+	bool isBlocked;
 }
-ChildProcess;
+ProcessControlBlock;
 
 
 //clock struct to track seconds and nanoseconds

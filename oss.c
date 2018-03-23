@@ -10,11 +10,15 @@
 #include <math.h>
 #include <signal.h>
 #include <limits.h>
+#include <sys/msg.h>
+#include <sys/wait.h>
+
 
 #define MAX_LINE 100
-#define DEFAULT_SLAVE 5
+#define DEFAULT_SLAVE 2
 #define DEFAULT_RUNTIME 20
 #define DEFAULT_FILENAME "logfile"
+#define MAX_PR_COUNT 100
 
 //function declarations
 pid_t r_wait(int* stat_loc);
@@ -34,7 +38,9 @@ int main(int argc, char *argv[])
         signal(SIGINT, int_Handler);
 
         //declare vars
-        //seconds for shmat
+        int sharedMemoryID;
+	ProcessControlBlock *pcb;	
+	Clock *clock;
         int total = 0;
         int prCount = 0;
         int opt = 0;
@@ -62,7 +68,6 @@ int main(int argc, char *argv[])
                 }
 
         }
-
 	
 	//create queues
 	Queue* rrQueue = generateQueue(18);
@@ -74,17 +79,33 @@ int main(int argc, char *argv[])
 	printf("queues created successfully!\n");
 	
 
-        //print out prg settings
-        programRunSettingsPrint(filename,runtime);
+   	//print out prg settings
+    	programRunSettingsPrint(filename,runtime);
 
-        //set up memory for children 
-        ChildProcess *pid;
-        pid = (ChildProcess *)malloc(sizeof(ChildProcess) * numberOfSlaveProcesses);
-        fprintf(stderr, "pid memory size: %d\n", sizeof(pid));
+    	//set up SIGALARM handler
+   	if(signal(SIGALRM, int_Handler) == SIG_ERR)
+	{
+		perror("SINGAL ERROR: SIGALRM failed catch!\n");
+		
+		exit(errno);	
+	}
+	
+	//set up shared memory segment for clock
+	sharedMemoryID = shmget(MEMORY_KEY, sizeof(Clock), IPC_CREAT | 1000);
+	if(sharedMemoryID < 0)
+	{
+		perror("Creatinf shared memory fragment Failed!!\n");
+		exit(errno);
+	}
 
         int count = numberOfSlaveProcesses;
         int i = 0;
-        //loop to spawn processes
+        
+	
+
+	
+
+	//loop to spawn processes
         for(i; i < numberOfSlaveProcesses; i++)
         {
 
@@ -136,13 +157,22 @@ int main(int argc, char *argv[])
 //function for exiting on Ctrl-C
 void int_Handler(int sig)
 {
-        signal(sig, SIG_IGN);
-        printf("Program terminated using Ctrl-C");
+       	signal(sig, SIG_IGN);
+        printf("Program terminated using Ctrl-C\n");
         exit(0);
 }
 
 //alarm function
-
+void alarm_Handler(int sig)
+{
+	printf("Alarm! Time is UP!\n");
+	for(int i = 0; i < numSlaveProcesses; i++)
+	{
+		kill(pcd[i].childID, SIGINT);	
+	}
+	
+	while(wait(
+}
 
 //function to wait - from UNIX book
 pid_t r_wait(int* stat_loc)
