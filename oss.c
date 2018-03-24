@@ -20,7 +20,19 @@
 #define DEFAULT_FILENAME "logfile"
 #define MAX_PR_COUNT 100
 
+//quantum definitions
+#define RR_QUANTUM 500000
+#define Q1_QUANTUM 1000000
+#define Q2_QUANTUM 2000000
+#define Q3_QUANTUM 4000000
+
+
+int numberOfSlaveProcesses = DEFAULT_SLAVE;
+ProcessControlBlock * pcb;
+Clock *sharedClock;
+
 //function declarations
+int getNextScheduled();
 pid_t r_wait(int* stat_loc);
 void helpOptionPrint();
 void programRunSettingsPrint(char *filename, int runtime);
@@ -38,13 +50,14 @@ int main(int argc, char *argv[])
         signal(SIGINT, int_Handler);
 
         //declare vars
-        int sharedMemoryID;
-	ProcessControlBlock *pcb;	
-	Clock *clock;
+        int clockMemoryID;
+	int pcbMemoryID;
+	//ProcessControlBlock *pcb;	
+	//Clock *sharedClock;
         int total = 0;
-        int prCount = 0;
+        int runningProcesses = 0;
         int opt = 0;
-        int numberOfSlaveProcesses = DEFAULT_SLAVE;
+        //int numberOfSlaveProcesses = DEFAULT_SLAVE;
         char *filename = DEFAULT_FILENAME;
         int runtime = DEFAULT_RUNTIME;
         pid_t master = 1;
@@ -91,19 +104,84 @@ int main(int argc, char *argv[])
 	}
 	
 	//set up shared memory segment for clock
-	sharedMemoryID = shmget(MEMORY_KEY, sizeof(Clock), IPC_CREAT | 1000);
-	if(sharedMemoryID < 0)
+	clockMemoryID = shmget(CLOCK_KEY, sizeof(Clock), IPC_CREAT | 0666);
+	if(clockMemoryID < 0)
 	{
-		perror("Creatinf shared memory fragment Failed!!\n");
+		perror("Creating clock shared memory Failed!!\n");
 		exit(errno);
 	}
 
+	//attach clock 
+	sharedClock = shmat(clockMemoryID, NULL, 0);
+
+
+	//set up shared memory segment for pcb
+	pcbMemoryID = shmget(PCB_KEY, (sizeof(ProcessControlBlock) * 18), IPC_CREAT | 0555);
+	if(pcbMemoryID < 0)
+	{
+		perror("Creating PCB shared memory Failed!!\n");
+	}
+	
+	//attach pcb
+	pcb = shmat(pcbMemoryID, NULL, 0);
+	
+	
         int count = numberOfSlaveProcesses;
         int i = 0;
         
 	
-
 	
+	
+	if(count < 100)
+	{
+		int totaltime = 0;
+		
+		//int time = ((clock->seconds * 1000000000) + clock->nano);
+		int nextTime = getNextScheduled();
+		if(totaltime >= nextTime && runningProcesses < 18)
+		{	
+			//rolls for time and queue
+			srand(time(NULL));
+			int priority = rand() % 10 + 1;
+			int blockRoll = rand() % 10 + 1;
+			int startRoll = rand() % 100000 + 1;
+			int runtimeRoll = rand() % 10000000 + 1;
+			int queuePlacement;
+			int isBlockable;
+			char blockable;
+
+			//queue placement: roll 10 = RR Queue, else priority Queue 1
+			if(priority <10)
+			{
+				queuePlacement = 1;
+			}			
+			else 
+			{
+				queuePlacement = 0;
+			}
+			
+			//block roll: roll 7-10 to be blocked, else not blocked
+			if(blockRoll < 7)
+			{
+				isBlockable = 0;
+				blockable = 'N';
+			}
+			else 
+			{
+				isBlockable = 1;
+				blockable = 'Y';
+			}
+
+			fprintf(stderr, "Pre Fork():: queue: %d, blockable: %s, start: %d, runtime: %d\n",queuePlacement, blockable, startRoll, runtimeRoll);
+  
+
+
+
+		}
+	}
+	
+
+/*	
 
 	//loop to spawn processes
         for(i; i < numberOfSlaveProcesses; i++)
@@ -111,7 +189,7 @@ int main(int argc, char *argv[])
 
                 fprintf(stderr,"Count: %d\n", total);
                 prCount++;
-		              master = fork();
+		master = fork();
 
 
                 if(master < 0)
@@ -149,10 +227,19 @@ int main(int argc, char *argv[])
 
         printf("Program terminating...\n");
         fprintf(stderr, "Total Children: %d\n", total);
-
+*/
         return 0;
 }
 
+
+//function to get time for next scheduled process
+int getNextScheduled()
+{
+	int time = 0;
+	
+
+	return time;
+}
 
 //function for exiting on Ctrl-C
 void int_Handler(int sig)
@@ -165,13 +252,14 @@ void int_Handler(int sig)
 //alarm function
 void alarm_Handler(int sig)
 {
+	int i;
 	printf("Alarm! Time is UP!\n");
-	for(int i = 0; i < numSlaveProcesses; i++)
+	for(i = 0; i < numberOfSlaveProcesses; i++)
 	{
-		kill(pcd[i].childID, SIGINT);	
+		kill(pcb[i].childID, SIGINT);	
 	}
 	
-	while(wait(
+//	while(wait(
 }
 
 //function to wait - from UNIX book

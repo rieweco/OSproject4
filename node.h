@@ -14,7 +14,7 @@ typedef struct ProcessControlBlock
         int childNumber;
         pid_t childID;
 	int priority;
-	bool isBlocked;
+	int isBlocked;	
 }
 ProcessControlBlock;
 
