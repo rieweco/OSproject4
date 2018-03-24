@@ -48,6 +48,13 @@ added functions to roll rand() for runtime/start/stop/isBlockable/priority value
 printing out values for first rolls for testing
 also added loops for spawning slave processes. 
 -----------------------------------
+updated lcb struct for additional properties. 
+created executable oss for testing. ran into seg fault error, corrected.
+issue: pcb is in shared mem, but when forking, need to figure out
+whether to fork() the pcb segment or fork in local mem and addfeatures of that 
+process to the next pcb spot.
+continuing work...
+----------------------------------
 
 
 
