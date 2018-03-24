@@ -44,3 +44,13 @@ one for pcb and one for clock
 set up sharememory access in slave.c
 
 -----------------------------------
+added functions to roll rand() for runtime/start/stop/isBlockable/priority values
+printing out values for first rolls for testing
+also added loops for spawning slave processes. 
+-----------------------------------
+
+
+
+
+
+
