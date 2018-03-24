@@ -11,8 +11,8 @@
 //child struct that holds the child number and its pid
 typedef struct ProcessControlBlock
 {
-        int childNumber;
-        pid_t childID;
+        int slaveNumber;
+        pid_t slaveID;
 	int priority;
 	int isBlocked;	
 }

@@ -27,8 +27,8 @@
 #define Q3_QUANTUM 4000000
 
 
-int numberOfSlaveProcesses = DEFAULT_SLAVE;
-ProcessControlBlock * pcb;
+int numberOfSlaveProcesses;
+ProcessControlBlock *pcb;
 Clock *sharedClock;
 
 //function declarations
@@ -55,12 +55,10 @@ int main(int argc, char *argv[])
 	//ProcessControlBlock *pcb;	
 	//Clock *sharedClock;
         int total = 0;
-        int runningProcesses = 0;
         int opt = 0;
         //int numberOfSlaveProcesses = DEFAULT_SLAVE;
         char *filename = DEFAULT_FILENAME;
         int runtime = DEFAULT_RUNTIME;
-        pid_t master = 1;
 
         //read command line options
         while((opt = getopt(argc, argv, "h l:t:")) != -1)
@@ -102,7 +100,8 @@ int main(int argc, char *argv[])
 		
 		exit(errno);	
 	}
-	
+	printf("set up sigalrm\n");
+		
 	//set up shared memory segment for clock
 	clockMemoryID = shmget(CLOCK_KEY, sizeof(Clock), IPC_CREAT | 0666);
 	if(clockMemoryID < 0)
@@ -110,10 +109,11 @@ int main(int argc, char *argv[])
 		perror("Creating clock shared memory Failed!!\n");
 		exit(errno);
 	}
+	printf("clock mem set up successfully\n");
 
 	//attach clock 
 	sharedClock = shmat(clockMemoryID, NULL, 0);
-
+	printf("clock attached successfully\n");
 
 	//set up shared memory segment for pcb
 	pcbMemoryID = shmget(PCB_KEY, (sizeof(ProcessControlBlock) * 18), IPC_CREAT | 0555);
@@ -121,24 +121,23 @@ int main(int argc, char *argv[])
 	{
 		perror("Creating PCB shared memory Failed!!\n");
 	}
+	printf("pcb memory set up successfully\n");
 	
 	//attach pcb
 	pcb = shmat(pcbMemoryID, NULL, 0);
+	printf("pcb attached successfully\n");
 	
-	
-        int count = numberOfSlaveProcesses;
-        int i = 0;
+	numberOfSlaveProcesses = 0; 
+        int count = 0;
         
-	
-	
-	
-	if(count < 100)
+	if(count < 2)
 	{
 		int totaltime = 0;
 		
 		//int time = ((clock->seconds * 1000000000) + clock->nano);
 		int nextTime = getNextScheduled();
-		if(totaltime >= nextTime && runningProcesses < 18)
+		
+		if(totaltime >= nextTime && numberOfSlaveProcesses < 18)
 		{	
 			//rolls for time and queue
 			srand(time(NULL));
@@ -170,16 +169,56 @@ int main(int argc, char *argv[])
 			{
 				isBlockable = 1;
 				blockable = 'Y';
+			}			
+			
+			fprintf(stderr, "Pre Fork():: queue: %d, blockable: %c, start: %d, runtime: %d\n",queuePlacement, blockable, startRoll, runtimeRoll);
+
+			//fork slave process
+			for(i = 0; i < 18; i++)
+			{
+				if(pcb[i].slaveID == -1)
+				{
+					count++;
+					numberOfSlaveProcesses++;
+					pcb[i].slaveNumber = i;
+					pcb[i].slaveID = fork();
+					
+					if(pcb[i].slaveID < 0)
+					{
+						perror("Failed to fork90 slave process!\n");
+						exit(errno);
+					}
+					else
+					{
+						pcb[i].priority = queuePlacement;
+						pcb[i].isBlocked = isBlockable;
+						fprintf(stderr,"priority: %d, isBlockable: %d\n", pcb[i].priority, pcb[i].isBlocked);
+					}
+			
+				}
+				else
+				{
+					perror("No Free Spaces in PCB!\n");
+					exit(error);
+				}
 			}
-
-			fprintf(stderr, "Pre Fork():: queue: %d, blockable: %s, start: %d, runtime: %d\n",queuePlacement, blockable, startRoll, runtimeRoll);
-  
-
-
-
+				
 		}
 	}
 	
+	int i;
+	for(i = 0; i < numberOfClaveProcesses; i++)
+	{
+		kill(pcb[i].slaveID, SIGINT);
+	}
+	
+	while(wait(&wait_status) > 0)
+	{
+		;
+	}
+
+	free(pcb);
+	detachAndRemove(
 
 /*	
 
