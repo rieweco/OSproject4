@@ -38,4 +38,9 @@ https://github.com/rieweco/OSproject4.git
 #       deleted:    queue.c
 ___________________________________
 
+inserted slave.c
+updated shared memory code for 2 separate keys
+one for pcb and one for clock
+set up sharememory access in slave.c
 
+-----------------------------------
