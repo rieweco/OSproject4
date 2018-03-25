@@ -55,6 +55,11 @@ whether to fork() the pcb segment or fork in local mem and addfeatures of that
 process to the next pcb spot.
 continuing work...
 ----------------------------------
+updated shared memory -- able to change data fine, and created pcb array in shared mem.
+created slave array in local memory to hold the actual processes, while pcb just holds data. 
+created makefile -- working
+going to test updating clock
+----------------------------------
 
 
 
