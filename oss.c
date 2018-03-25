@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <unistd.h>
 #include <time.h>
 #include <sys/shm.h>
 #include <sys/types.h>
@@ -30,6 +31,9 @@
 int numberOfSlaveProcesses;
 ProcessControlBlock *pcb;
 Clock *sharedClock;
+Slave *slave;
+char* pcbAddress;
+//char* sharedClockAddress;
 
 //function declarations
 int getNextScheduled();
@@ -37,6 +41,7 @@ pid_t r_wait(int* stat_loc);
 void helpOptionPrint();
 void programRunSettingsPrint(char *filename, int runtime);
 void int_Handler(int);
+int detachAndRemove(int shmid, void *shmaddr);
 struct Queue* generateQueue(unsigned capacity);
 int isFull(struct Queue* queue);
 int isEmpty(struct Queue* queue);
@@ -53,10 +58,9 @@ int main(int argc, char *argv[])
         int clockMemoryID;
 	int pcbMemoryID;
 	//ProcessControlBlock *pcb;	
-	//Clock *sharedClock;
-        int total = 0;
+	//Clock *sharedClock; 
         int opt = 0;
-        //int numberOfSlaveProcesses = DEFAULT_SLAVE;
+        int wait_status;
         char *filename = DEFAULT_FILENAME;
         int runtime = DEFAULT_RUNTIME;
 
@@ -88,6 +92,9 @@ int main(int argc, char *argv[])
 	Queue* blockQueue = generateQueue(18);	
 	
 	printf("queues created successfully!\n");
+
+	//create array with size of 18 Slave structs
+	slave = (Slave *)malloc(sizeof(Slave) * 18);
 	
 
    	//print out prg settings
@@ -101,7 +108,8 @@ int main(int argc, char *argv[])
 		exit(errno);	
 	}
 	printf("set up sigalrm\n");
-		
+	
+	
 	//set up shared memory segment for clock
 	clockMemoryID = shmget(CLOCK_KEY, sizeof(Clock), IPC_CREAT | 0666);
 	if(clockMemoryID < 0)
@@ -115,8 +123,14 @@ int main(int argc, char *argv[])
 	sharedClock = shmat(clockMemoryID, NULL, 0);
 	printf("clock attached successfully\n");
 
+	//initialize clock
+	//sharedClock = (Clock*) ((void*)sharedClockAddress+sizeof(Clock));
+	sharedClock->seconds = 0;
+	sharedClock->nanoseconds = 0;
+	printf("seconds: %d\tnanoseconds: %d\n", sharedClock->seconds, sharedClock->nanoseconds);
+
 	//set up shared memory segment for pcb
-	pcbMemoryID = shmget(PCB_KEY, (sizeof(ProcessControlBlock) * 18), IPC_CREAT | 0555);
+	pcbMemoryID = shmget(PCB_KEY, 2048, IPC_CREAT | 0666);
 	if(pcbMemoryID < 0)
 	{
 		perror("Creating PCB shared memory Failed!!\n");
@@ -124,8 +138,20 @@ int main(int argc, char *argv[])
 	printf("pcb memory set up successfully\n");
 	
 	//attach pcb
-	pcb = shmat(pcbMemoryID, NULL, 0);
+	pcbAddress = shmat(pcbMemoryID, NULL, 0);
 	printf("pcb attached successfully\n");
+
+
+	//initialize pcb with slaveID = -1;
+	pcb = (ProcessControlBlock*) ((void*)pcbAddress+sizeof(int));	
+	
+	int j;
+	for(j = 0; j < 18; j++)
+	{
+		pcb[j].slaveID = -1;
+		printf("pcb[%d].slaveID = %d\n", j, pcb[j].slaveID);
+	}
+
 	
 	numberOfSlaveProcesses = 0; 
         int count = 0;
@@ -172,8 +198,10 @@ int main(int argc, char *argv[])
 			}			
 			
 			fprintf(stderr, "Pre Fork():: queue: %d, blockable: %c, start: %d, runtime: %d\n",queuePlacement, blockable, startRoll, runtimeRoll);
-
+			
+			
 			//fork slave process
+			int i;
 			for(i = 0; i < 18; i++)
 			{
 				if(pcb[i].slaveID == -1)
@@ -181,44 +209,63 @@ int main(int argc, char *argv[])
 					count++;
 					numberOfSlaveProcesses++;
 					pcb[i].slaveNumber = i;
-					pcb[i].slaveID = fork();
+					slave[i].slaveID = fork();
 					
-					if(pcb[i].slaveID < 0)
+					if(slave[i].slaveID < 0)
 					{
 						perror("Failed to fork90 slave process!\n");
 						exit(errno);
 					}
 					else
 					{
+						slave[i].priority = queuePlacement;
+						slave[i].isBlocked = isBlockable;
+						slave[i].duration = runtimeRoll;
+						pcb[i].slaveID = slave[i].slaveID;
 						pcb[i].priority = queuePlacement;
 						pcb[i].isBlocked = isBlockable;
+						pcb[i].start = startRoll;
+						pcb[i].hasStarted = 0;
+						
 						fprintf(stderr,"priority: %d, isBlockable: %d\n", pcb[i].priority, pcb[i].isBlocked);
 					}
+					
+					//find first empty spot in pcb, create slave and exit loop
+					break;
 			
 				}
 				else
 				{
 					perror("No Free Spaces in PCB!\n");
-					exit(error);
+					exit(errno);
 				}
 			}
 				
 		}
 	}
 	
+	//kill slave processes
 	int i;
-	for(i = 0; i < numberOfClaveProcesses; i++)
+	for(i = 0; i < numberOfSlaveProcesses; i++)
 	{
-		kill(pcb[i].slaveID, SIGINT);
+		kill(slave[i].slaveID, SIGINT);
 	}
 	
+	printf("killed slave processes successfully!\n");
+
+	//wait for slaves to finish	
 	while(wait(&wait_status) > 0)
 	{
 		;
 	}
-
+	printf("wait successful\n");
+	
+	//free shared memory
 	free(pcb);
-	detachAndRemove(
+	detachAndRemove(pcbMemoryID, pcb);
+	detachAndRemove(clockMemoryID, sharedClock);
+	
+	printf("freed shared memory successfully!\n");	
 
 /*	
 
@@ -295,10 +342,30 @@ void alarm_Handler(int sig)
 	printf("Alarm! Time is UP!\n");
 	for(i = 0; i < numberOfSlaveProcesses; i++)
 	{
-		kill(pcb[i].childID, SIGINT);	
+		kill(slave[i].slaveID, SIGINT);	
 	}
 	
 //	while(wait(
+}
+
+//function to detach and remove shared memory -- from UNIX Book
+int detachAndRemove(int shmid, void *shmaddr)
+{
+	int error = 0;
+	if(shmdt(shmaddr) == -1)
+	{
+		error = errno;	
+	}
+	if((shmctl(shmid, IPC_RMID, NULL) == -1) && !error)
+	{
+		error = errno;
+	}
+	if(!error)
+	{
+		return 0;
+	}
+	errno = error;
+	return -1;
 }
 
 //function to wait - from UNIX book

@@ -15,7 +15,7 @@ int stop;
 int duration;
 int progress;
 
-Clock *clock;
+Clock *sharedClock;
 int clockID;
 int processID;
 void sendMSG(int, int);
@@ -27,11 +27,9 @@ void int_Handler(int sig);
 int main(int argc, char *argv[])
 {	
 	//make sure arg = 2... argv[1] is the process id
-	string argument;
-	if(argc = 2)
+	if(argc == 2)
 	{
-		argv[1] = argument;
-		processID = atoi(argument);	
+		processID = atoi(argv[1]);	
 	}
 	else
 	{
@@ -48,17 +46,17 @@ int main(int argc, char *argv[])
 	}
 
 	//attach to shared memory for clock
-	clock = shmat(clockID, NULL, 0);
+	sharedClock = shmat(clockID, NULL, 0);
 
 	//create random number for duration of process
 	srand(time(NULL));
 	duration = (rand() % 1000000) + 1;
-	printf("slaveID: %d Duration set to: %d nanoseconds\n", processID, duration);
+	fprintf(stderr,"slaveID: %d Duration set to: %d nanoseconds\n", processID, duration);
 	
 	progress = 0;
 	
 	//loop to run critical section 
-
+	fprintf(stderr,"SlaveID: %d - Slave process running!\n", processID); 
 
 
 

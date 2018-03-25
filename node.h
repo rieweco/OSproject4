@@ -4,20 +4,32 @@
 #define NODE_H
 
 //shared memory keys
-#define PCB_KEY 1200
+#define PCB_KEY 1000
 #define CLOCK_KEY 1400
 
 
-//child struct that holds the child number and its pid
+//pcb struct that holds the slave pid, number, priority, and isblocked
 typedef struct ProcessControlBlock
 {
         int slaveNumber;
         pid_t slaveID;
 	int priority;
-	int isBlocked;	
+	int isBlocked;
+	int start;
+	int hasStarted;	
 }
 ProcessControlBlock;
 
+//slave struct that holds all randomly rolled results
+typedef struct Slave
+{
+	pid_t slaveID;
+	int priority;
+	int isBlocked;
+	int duration;
+	int progress;
+}
+Slave;
 
 //clock struct to track seconds and nanoseconds
 typedef struct Clock
