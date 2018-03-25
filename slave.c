@@ -29,7 +29,8 @@ int main(int argc, char *argv[])
 	//make sure arg = 2... argv[1] is the process id
 	if(argc == 2)
 	{
-		processID = atoi(argv[1]);	
+		processID = atoi(argv[1]);
+		printf("Slave: ProcessID(argv[1]): %d\n",processID);	
 	}
 	else
 	{

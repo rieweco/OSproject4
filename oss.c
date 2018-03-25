@@ -13,13 +13,15 @@
 #include <limits.h>
 #include <sys/msg.h>
 #include <sys/wait.h>
-
+#include <string.h>
 
 #define MAX_LINE 100
 #define DEFAULT_SLAVE 2
-#define DEFAULT_RUNTIME 20
+#define DEFAULT_RUNTIME 5
 #define DEFAULT_FILENAME "logfile"
 #define MAX_PR_COUNT 100
+#define MAXTIMEBETWEENNEWPROCSNS 5000000
+#define MAXTIMEBETWEENNEWPROCSSECS 1
 
 //quantum definitions
 #define RR_QUANTUM 500000
@@ -33,10 +35,14 @@ ProcessControlBlock *pcb;
 Clock *sharedClock;
 Slave *slave;
 char* pcbAddress;
+int spawnNewTime;
 //char* sharedClockAddress;
 
 //function declarations
-int getNextScheduled();
+Slave performRolls(pid_t id);
+void printSlaveInfo(ProcessControlBlock* p);
+//int getClockTime(Clock** c);
+//int getNextScheduled();
 pid_t r_wait(int* stat_loc);
 void helpOptionPrint();
 void programRunSettingsPrint(char *filename, int runtime);
@@ -48,6 +54,7 @@ int isEmpty(struct Queue* queue);
 void enqueue(struct Queue* queue, int item);
 int dequeue(struct Queue* queue);
 int front(struct Queue* queue);
+int getSpawnTime();
 
 int main(int argc, char *argv[])
 {
@@ -55,10 +62,11 @@ int main(int argc, char *argv[])
         signal(SIGINT, int_Handler);
 
         //declare vars
+        int spawnTime;
+	int spawnSeconds;
+	int spawnNanoseconds;
         int clockMemoryID;
 	int pcbMemoryID;
-	//ProcessControlBlock *pcb;	
-	//Clock *sharedClock; 
         int opt = 0;
         int wait_status;
         char *filename = DEFAULT_FILENAME;
@@ -90,8 +98,6 @@ int main(int argc, char *argv[])
 	Queue* p2Queue = generateQueue(18);
 	Queue* p3Queue = generateQueue(18);
 	Queue* blockQueue = generateQueue(18);	
-	
-	printf("queues created successfully!\n");
 
 	//create array with size of 18 Slave structs
 	slave = (Slave *)malloc(sizeof(Slave) * 18);
@@ -107,9 +113,9 @@ int main(int argc, char *argv[])
 		
 		exit(errno);	
 	}
-	printf("set up sigalrm\n");
-	
-	
+
+	alarm(runtime);
+		
 	//set up shared memory segment for clock
 	clockMemoryID = shmget(CLOCK_KEY, sizeof(Clock), IPC_CREAT | 0666);
 	if(clockMemoryID < 0)
@@ -117,17 +123,13 @@ int main(int argc, char *argv[])
 		perror("Creating clock shared memory Failed!!\n");
 		exit(errno);
 	}
-	printf("clock mem set up successfully\n");
 
 	//attach clock 
 	sharedClock = shmat(clockMemoryID, NULL, 0);
-	printf("clock attached successfully\n");
 
 	//initialize clock
-	//sharedClock = (Clock*) ((void*)sharedClockAddress+sizeof(Clock));
 	sharedClock->seconds = 0;
 	sharedClock->nanoseconds = 0;
-	printf("seconds: %d\tnanoseconds: %d\n", sharedClock->seconds, sharedClock->nanoseconds);
 
 	//set up shared memory segment for pcb
 	pcbMemoryID = shmget(PCB_KEY, 2048, IPC_CREAT | 0666);
@@ -135,186 +137,305 @@ int main(int argc, char *argv[])
 	{
 		perror("Creating PCB shared memory Failed!!\n");
 	}
-	printf("pcb memory set up successfully\n");
 	
 	//attach pcb
 	pcbAddress = shmat(pcbMemoryID, NULL, 0);
-	printf("pcb attached successfully\n");
-
 
 	//initialize pcb with slaveID = -1;
 	pcb = (ProcessControlBlock*) ((void*)pcbAddress+sizeof(int));	
 	
-	int j;
-	for(j = 0; j < 18; j++)
+	int q;
+	for(q = 0; q < 18; q++)
 	{
-		pcb[j].slaveID = -1;
-		printf("pcb[%d].slaveID = %d\n", j, pcb[j].slaveID);
+		pcb[q].slaveID = -1;
 	}
 
 	
 	numberOfSlaveProcesses = 0; 
         int count = 0;
         
-	if(count < 2)
-	{
-		int totaltime = 0;
-		
-		//int time = ((clock->seconds * 1000000000) + clock->nano);
-		int nextTime = getNextScheduled();
-		
-		if(totaltime >= nextTime && numberOfSlaveProcesses < 18)
-		{	
-			//rolls for time and queue
-			srand(time(NULL));
-			int priority = rand() % 10 + 1;
-			int blockRoll = rand() % 10 + 1;
-			int startRoll = rand() % 100000 + 1;
-			int runtimeRoll = rand() % 10000000 + 1;
-			int queuePlacement;
-			int isBlockable;
-			char blockable;
+	//rolls for time and queue
+	srand(time(NULL));
+	int priority = rand() % 10 + 1;
+	int blockRoll = rand() % 10 + 1;
+	int startRoll = rand() % 100000 + 1;
+	int runtimeRoll = rand() % 10000000 + 1;
+	int queuePlacement;
+	int isBlockable;
 
-			//queue placement: roll 10 = RR Queue, else priority Queue 1
-			if(priority <10)
-			{
-				queuePlacement = 1;
-			}			
-			else 
-			{
-				queuePlacement = 0;
+	//queue placement: roll 10 = RR Queue, else priority Queue 1
+	if(priority <10)
+	{
+		queuePlacement = 1;
+	}			
+	else 
+	{
+		queuePlacement = 0;
+	}
+		
+	//block roll: roll 7-10 to be blocked, else not blocked
+	if(blockRoll < 7)
+	{
+		isBlockable = 0;
+	}
+	else 
+	{
+		isBlockable = 1;
+	}			
+			
+	// get spawn time
+	spawnTime = getSpawnTime();
+	spawnSeconds = spawnTime / 1000000000;
+	spawnNanoseconds = spawnTime % 1000000000;
+	printf("spawntime: %d, sec: %d, nano: %d\n",spawnTime,spawnSeconds,spawnNanoseconds);
+	//sharedClock->seconds = spawnSeconds;
+	//sharedClock->nanoseconds = spawnNanoseconds;
+
+	//fork slave process
+	int i;
+	count++;
+	numberOfSlaveProcesses++;
+	for(i = 0; i < count; i++)
+	{
+		printf("count: %d\n",count);
+		slave[0].slaveID = fork();
+					
+		if(slave[0].slaveID < 0)
+		{
+			perror("Failed to fork() slave process!\n");
+			exit(errno);
+		}
+		else if(slave[0].slaveID == 0)
+		{
+			slave[0].slaveID = getpid();
+			slave[0].priority = queuePlacement;
+			slave[0].isBlockable = isBlockable;
+			slave[0].duration = runtimeRoll;
+			slave[0].progress = 0;
+			slave[0].start = startRoll;
+			pcb[0].slaveID = slave[0].slaveID;
+			pcb[0].priority = queuePlacement;
+			pcb[0].isBlocked = isBlockable;
+			pcb[0].start = startRoll;
+			pcb[0].hasStarted = 0;
+			pcb[0].index = 0;
+
+
+			execl("./slave","./slave",slave[0].slaveID,NULL);
+		}
+		else
+		{
+			
+			if(slave[0].priority == 0)
+			{	
+				enqueue(rrQueue,slave[0].slaveID);
+				printf("slaveID: %d placed in RR Queue\n",slave[0].slaveID);
 			}
-			
-			//block roll: roll 7-10 to be blocked, else not blocked
-			if(blockRoll < 7)
+			else
 			{
-				isBlockable = 0;
-				blockable = 'N';
+				enqueue(p1Queue,slave[0].slaveID);
+				printf("slaveID: %d placed in Priority 1 Queue\n",slave[0].slaveID);	
 			}
-			else 
-			{
-				isBlockable = 1;
-				blockable = 'Y';
-			}			
-			
-			fprintf(stderr, "Pre Fork():: queue: %d, blockable: %c, start: %d, runtime: %d\n",queuePlacement, blockable, startRoll, runtimeRoll);
-			
-			
-			//fork slave process
+		}
+		
+	}
+
+	
+	while(count < 5)
+	{
+		int sec;
+		int nano;
+		sec = sharedClock->seconds * 1000000000;
+		nano = sharedClock->nanoseconds;
+		int currentTime = sec + nano;
+		
+		if(currentTime >= spawnTime && numberOfSlaveProcesses < 5)
+		{
+			spawnTime = getSpawnTime() + currentTime;
+			count++;
+			int index;
 			int i;
 			for(i = 0; i < 18; i++)
 			{
 				if(pcb[i].slaveID == -1)
 				{
-					count++;
-					numberOfSlaveProcesses++;
-					pcb[i].slaveNumber = i;
-					slave[i].slaveID = fork();
-					
-					if(slave[i].slaveID < 0)
-					{
-						perror("Failed to fork90 slave process!\n");
-						exit(errno);
-					}
-					else
-					{
-						slave[i].priority = queuePlacement;
-						slave[i].isBlocked = isBlockable;
-						slave[i].duration = runtimeRoll;
-						pcb[i].slaveID = slave[i].slaveID;
-						pcb[i].priority = queuePlacement;
-						pcb[i].isBlocked = isBlockable;
-						pcb[i].start = startRoll;
-						pcb[i].hasStarted = 0;
-						
-						fprintf(stderr,"priority: %d, isBlockable: %d\n", pcb[i].priority, pcb[i].isBlocked);
-					}
-					
-					//find first empty spot in pcb, create slave and exit loop
+					index = pcb[i].index;
 					break;
-			
-				}
-				else
-				{
-					perror("No Free Spaces in PCB!\n");
-					exit(errno);
 				}
 			}
-				
+			printf("count: %d\n",count);
+			slave[index].slaveID = fork();
+			if(slave[index].slaveID < 0)
+			{
+				perror("Failed to fork() slave process!\n");
+				exit(errno);
+			}
+			else if(slave[index].slaveID == 0)
+			{
+				pid_t id = getpid();
+				slave[index] = performRolls(id);
+						
+				pcb[index].slaveID = slave[index].slaveID;
+				pcb[index].priority = slave[index].priority;
+				pcb[index].isBlocked = slave[index].isBlockable;
+				slave[index].isBlockable = 0;
+				pcb[index].start = slave[index].start;
+				pcb[index].hasStarted = 0;
+				pcb[index].index = index;
+
+				printf("Slave: SlaveID: %d, spawned at %d\n", slave[index].slaveID, currentTime);
+			}
 		}
+		else
+		{
+   			currentTime = currentTime + 500000;
+			nano = nano + 50000000;
+			if(nano > 1000000000)
+			{
+				sec = sec + 1000000000;
+				nano = nano - 1000000000;
+				sharedClock->seconds = sec/1000000000;
+				sharedClock->nanoseconds = nano;
+				printf("clock is now: %d.%d sec\n",sharedClock->seconds, sharedClock->nanoseconds);
+			}
+			else
+			{
+				printf("nano less than 1000000000\n");
+				sharedClock->seconds = sec/1000000000;
+				sharedClock->nanoseconds = nano;	
+				printf("clock is now: %d.%d sec\n",sharedClock->seconds, sharedClock->nanoseconds);
+			}
+		}			
 	}
+	
+	
+	//print pcb
+	int x;
+	for(x = 0; x < 5; x++)
+	{
+		if(pcb[x].slaveID != -1)
+		{
+			printSlaveInfo(&pcb[x]);
+		} 
+	}
+	
+	//print slave
+	int g;
+	for(g = 0; g < 5; g++)
+	{
+		printf("slave: slaveID: %d\n",slave[g].slaveID);
+	}
+		
 	
 	//kill slave processes
-	int i;
-	for(i = 0; i < numberOfSlaveProcesses; i++)
+	int j;
+	for(j = 0; j < numberOfSlaveProcesses; j++)
 	{
-		kill(slave[i].slaveID, SIGINT);
+		kill(slave[j].slaveID, SIGINT);
 	}
 	
-	printf("killed slave processes successfully!\n");
-
 	//wait for slaves to finish	
 	while(wait(&wait_status) > 0)
 	{
 		;
 	}
-	printf("wait successful\n");
 	
-	//free shared memory
-	free(pcb);
+	//free shared memory ****** one of these isnt working! ****
+	free(slave);
 	detachAndRemove(pcbMemoryID, pcb);
 	detachAndRemove(clockMemoryID, sharedClock);
 	
-	printf("freed shared memory successfully!\n");	
 
-/*	
+	return 0;
 
-	//loop to spawn processes
-        for(i; i < numberOfSlaveProcesses; i++)
-        {
-
-                fprintf(stderr,"Count: %d\n", total);
-                prCount++;
-		master = fork();
+}
 
 
-                if(master < 0)
-                {
-                        perror("Program failed to fork");
-                        return 1;
-                }
-                else if(master > 0)
-                {
-                        total++;
-                }
-                else
-                {
-                        fprintf(stderr, "Process ID:%ld Parent ID:%ld slave ID:%ld\n",
-                        (long)getpid(), (long)getppid(), (long)master);
+//function to perform all random rolls
+Slave performRolls( pid_t id)
+{
+	Slave s;
+	srand(time(NULL));
+	int priority = rand() % 10 + 1;
+	int blockRoll = rand() % 10 + 1;
+	int startRoll = rand() % 100000 + 1;
+	int runtimeRoll = rand() % 10000000 + 1;
+	int queuePlacement;
+	int isBlockable;
 
-                        exit(0);
-                }
-        }
+	//queue placement: roll 10 = RR Queue, else priority Queue 1
+	if(priority <10)
+	{
+		queuePlacement = 1;
+	}			
+	else 
+	{
+		queuePlacement = 0;
+	}
+		
+	//block roll: roll 7-10 to be blocked, else not blocked
+	if(blockRoll < 7)
+	{
+		isBlockable = 0;
+	}
+	else 
+	{
+		isBlockable = 1;
+	}
+	
+	s.slaveID = id;
+	s.priority = priority;
+	s.isBlockable = isBlockable;
+	s.start = startRoll;
+	s.duration = runtimeRoll;
+	s.progress = 0;		
+	
+	return s;
+}
+/*
 
+//function to get scheduled times
+int getScheduledTimes(ProcessControlBlock* p)
+{
+	int 
+	return start;
+}
 
-        //while loop to check child processes and close them
-        while(1)
-        {
-                master = wait(NULL);
-
-                if((master == -1) && (errno != EINTR))
-                {
-                        break;
-                }
-        }
-
-        //wait until processes are finished
-        //while(r_wait(NULL) < 0);
-
-        printf("Program terminating...\n");
-        fprintf(stderr, "Total Children: %d\n", total);
+//function to get clock time
+int getClockTime(Clock* c)
+{
+	int time;
+	int sec;
+	int nano;
+	sec = c->seconds * 1000000000;
+	nano - c->nanoseconds;
+	time = sec + nano;
+	return time;
+}
 */
-        return 0;
+//function to get next spawn time
+int getSpawnTime()
+{
+	int spawnTime;
+	int sec;
+	int nano;
+	srand(time(NULL));
+
+	sec = rand() % MAXTIMEBETWEENNEWPROCSSECS + 1;
+	nano = rand() % MAXTIMEBETWEENNEWPROCSNS;
+
+	sec = sec * 1000000000;
+	
+	spawnTime = sec + nano;
+
+	return spawnTime;
+}
+
+//function to print slave info
+void printSlaveInfo(ProcessControlBlock* p)
+{
+	printf("pcb[%d]:\tslaveID: %d\n", p->index, p->slaveID);
+	printf("\tpriority: %d\tstart:%d\thasStarted:%d\n", p->priority, p->start, p->hasStarted);
 }
 
 

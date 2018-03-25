@@ -11,7 +11,7 @@
 //pcb struct that holds the slave pid, number, priority, and isblocked
 typedef struct ProcessControlBlock
 {
-        int slaveNumber;
+        int index;
         pid_t slaveID;
 	int priority;
 	int isBlocked;
@@ -25,9 +25,10 @@ typedef struct Slave
 {
 	pid_t slaveID;
 	int priority;
-	int isBlocked;
+	int isBlockable;
 	int duration;
 	int progress;
+	int start;
 }
 Slave;
 
