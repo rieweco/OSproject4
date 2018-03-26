@@ -46,9 +46,10 @@ Queue* bQueue;
 
 
 //function declarations
-void sendMSG(int type);
+void sendMSG(int type,int dur,int prog,int sIndex,int burst);
 void recMSG(int type);
 int getID(int i);
+int getBurst(int prio);
 Slave performRolls(pid_t id);
 void printSlaveInfo(ProcessControlBlock* p);
 pid_t r_wait(int* stat_loc);
@@ -160,6 +161,7 @@ int main(int argc, char *argv[])
 	for(q = 0; q < 18; q++)
 	{
 		pcb[q].slaveID = -1;
+		pcb[q].index = q;
 	}
 
 	pid_t childPID = 0;	
@@ -200,13 +202,15 @@ int main(int argc, char *argv[])
 		pcb[0].slaveID = childPID;
 		pcb[0].priority = queuePlacement;
 		pcb[0].index = 0;
-		pcb[0].burstTime = 0;
+		pcb[0].burstTime = getBurst(queuePlacement);
 		pcb[0].isBlocked = 0;
+		pcb[0].duration = runtimeRoll;
+		pcb[0].progress = 0;
 		slave[0].slaveID = childPID;
 		slave[0].priority = queuePlacement;
 		slave[0].duration = runtimeRoll;
 		slave[0].progress = 0;
-		slave[0].burstTime = 0;	
+		slave[0].burstTime = getBurst(queuePlacement);	
 	
 		if(queuePlacement == 0)
 		{
@@ -219,10 +223,10 @@ int main(int argc, char *argv[])
 		numberOfSlaveProcesses++;	
 		count++;
 		printf("new slave process created. count now: %d\n",count);
+		printf("pcb info: i=%d, id=%d, prio-%d, burst=%d, dur=%d\n",pcb[0].index,pcb[0].slaveID,pcb[0].priority,pcb[0].burstTime,pcb[0].duration);
 	}
 	else
 	{
-		printf("in master: pcb[0].slaveID = %d\n",pcb[0].slaveID);
 		char numberBuffer[20];
 		snprintf(numberBuffer, 20,"%d",pcb[0].slaveID);
 		execl("./slave","./slave",numberBuffer,NULL);
@@ -230,54 +234,62 @@ int main(int argc, char *argv[])
 
 
 	//schdule algorithm
-	while(count < 10)
+	while(count < 2)
 	{
 		if(((sharedClock->seconds * 1000000000) + sharedClock->nanoseconds) >= spawnTime)
 		{
 			int w;
+			int freeFlag = 1;
 			spawnTime = getSpawnTime();
-			for(w = 0; w < numberOfSlaveProcesses; w++)
+			while(numberOfSlaveProcesses < 18 && freeFlag)
 			{
-				if(pcb[w].index == -1)
+				for(w = 0; w < numberOfSlaveProcesses; w++)
 				{
-					childPID = fork();
-					if(childPID < 0)
+					if(pcb[w].slaveID == -1)
 					{
-						printf("Error! Failed to spawn slave #%d!\n",count);
-						return 1;
-					}
-					else if(childPID > 0)
-					{
-						slave[w] = performRolls(childPID);
-						pcb[w].slaveID = childPID;
-						pcb[w].index = w;
-						pcb[w].priority = slave[w].priority;
-						pcb[w].isBlocked = 0;
-						pcb[w].burstTime = slave[w].burstTime;
-						pcb[w].progress = 0;
-						pcb[w].duration = slave[w].duration;
+						freeFlag = 0;
+						printf("for loop: pcb[%d].index = %d\n",w,pcb[w].index);
+						childPID = fork();
+						if(childPID < 0)
+						{
+							printf("Error! Failed to spawn slave #%d!\n",count);
+							return 1;
+						}
+						else if(childPID > 0)
+						{
+							printf("child PID > 0\n");
+							slave[w] = performRolls(childPID);
+							slave[w].index = w;
+							pcb[w].slaveID = childPID;
+							pcb[w].index = w;
+							pcb[w].priority = slave[w].priority;
+							pcb[w].isBlocked = 0;
+							pcb[w].burstTime = slave[w].burstTime;
+							pcb[w].progress = 0;
+							pcb[w].duration = slave[w].duration;
+							
+										
+							if(slave[w].priority == 0)
+							{	
+								enqueue(rrQueue,slave[w].slaveID);
+								printf("slaveID: %d placed in RR Queue\n",pcb[w].slaveID);
+							}
+							else
+							{
+								enqueue(p1Queue,slave[w].slaveID);
+								printf("slaveID: %d placed into Q 1\n",pcb[w].slaveID);
+							}
+							count++;
+							numberOfSlaveProcesses++;
+							printf("total count is now: %d, processes running: %d\n",count,numberOfSlaveProcesses);
 						
-									
-						if(slave[w].priority == 0)
-						{	
-							enqueue(rrQueue,slave[w].slaveID);
-							printf("slaveID: %d placed in RR Queue\n",slave[w].slaveID);
 						}
 						else
 						{
-							enqueue(p1Queue,slave[w].slaveID);
-							printf("slaveID: %d placed into Q 1\n",pcb[w].slaveID);
+							execl("./slave","./slave",childPID,NULL);
 						}
-						count++;
-						numberOfSlaveProcesses++;
-						printf("total count is now: %d, processes running: %d\n",count,numberOfSlaveProcesses);
-					
+					//break;
 					}
-					else
-					{
-						execl("./slave","./slave",childPID,NULL);
-					}
-				break;
 				}
 			}
 		}
@@ -290,21 +302,21 @@ int main(int argc, char *argv[])
 				int idFromQ = front(bQueue);
 				for(w = 0; w < 18; w++)
 				{
-					if(slave[w].slaveID == idFromQ)
+					if(pcb[w].slaveID == idFromQ)
 					{
 						dequeue(bQueue);
 						pcb[w].isBlocked = 0;
-						if(slave[w].priority == 0)
+						if(pcb[w].priority == 0)
 						{
 							enqueue(rrQueue,idFromQ);
 							printf("moved process with PID %d from Block Q to Q 0 at time %d:%d\n",idFromQ,sharedClock->seconds,sharedClock->nanoseconds);
 						}
-						else if(slave[w].priority == 1)
+						else if(pcb[w].priority == 1)
 						{
 							enqueue(p1Queue,idFromQ);
 							printf("moved process with PID %d from Block Q to Q 1 at time %d:%d\n",idFromQ,sharedClock->seconds,sharedClock->nanoseconds);
 						}
-						else if(slave[w].priority == 2)
+						else if(pcb[w].priority == 2)
 						{
 							enqueue(p2Queue,idFromQ);
 							printf("moved process with PID %d from Block Q to Q 2 at time %d:%d\n",idFromQ,sharedClock->seconds,sharedClock->nanoseconds);
@@ -325,9 +337,9 @@ int main(int argc, char *argv[])
 				int idFromQ = front(rrQueue);
 				for(w = 0; w < 18; w++)
 				{
-					if(slave[w].slaveID == idFromQ)
+					if(pcb[w].slaveID == idFromQ)
 					{
-						printf("Dispatching process with PID %d from Q 0 at time %d:%d,\n",idFromQ,sharedClock->seconds,sharedClock->nanoseconds);
+						printf("Dispatching process with PID %d found at index %d - from Q 0 at time %d:%d,\n",idFromQ,w,sharedClock->seconds,sharedClock->nanoseconds);
 						//get dispatch time and update clock
 						int dispatchTime = (rand() % 10001) + 100;
 						int sec = sharedClock->seconds;
@@ -341,7 +353,7 @@ int main(int argc, char *argv[])
 						sharedClock->seconds = sec;
 						sharedClock->nanoseconds = nano;
 						printf("total time this dispatch was %d nanoseconds.\n",dispatchTime);
-						sendMSG(idFromQ);
+						sendMSG(idFromQ,pcb[w].duration,pcb[w].progress,pcb[w].index,pcb[w].burstTime);
 						recMSG(MASTERKEY);
 					}
 
@@ -354,9 +366,9 @@ int main(int argc, char *argv[])
 				int idFromQ = front(p1Queue);
 				for(w = 0; w < 18; w++)
 				{
-					if(slave[w].slaveID == idFromQ)
+					if(pcb[w].slaveID == idFromQ)
 					{
-						printf("Dispatching process with PID %d from Q 1 at time %d:%d,\n",idFromQ,sharedClock->seconds,sharedClock->nanoseconds);
+						printf("Dispatching process with PID %d found at index %d - from Q 1 at time %d:%d,\n",idFromQ,w,sharedClock->seconds,sharedClock->nanoseconds);
 						//get dispatch time and update clock
 						int dispatchTime = (rand() % 10001) + 100;
 						int sec = sharedClock->seconds;
@@ -370,7 +382,7 @@ int main(int argc, char *argv[])
 						sharedClock->seconds = sec;
 						sharedClock->nanoseconds = nano;
 						printf("total time this dispatch was %d nanoseconds.\n",dispatchTime);
-						sendMSG(idFromQ);
+						sendMSG(idFromQ,pcb[w].duration,pcb[w].progress,pcb[w].index,pcb[w].burstTime);
 						printf("message sent from master to slave\n");
 						recMSG(MASTERKEY);
 						printf("message recieved from slave\n");
@@ -383,7 +395,7 @@ int main(int argc, char *argv[])
 				int idFromQ = front(p2Queue);
 				for(w = 0; w < 18; w++)
 				{
-					if(slave[w].slaveID == idFromQ)
+					if(pcb[w].slaveID == idFromQ)
 					{
 						printf("Dispatching process with PID %d from Q 2 at time %d:%d,\n",idFromQ,sharedClock->seconds,sharedClock->nanoseconds);
 						//get dispatch time and update clock
@@ -399,7 +411,7 @@ int main(int argc, char *argv[])
 						sharedClock->seconds = sec;
 						sharedClock->nanoseconds = nano;
 						printf("total time this dispatch was %d nanoseconds.\n",dispatchTime);
-						sendMSG(idFromQ);
+						sendMSG(idFromQ,pcb[w].duration,pcb[w].progress,pcb[w].index,pcb[w].burstTime);
 						recMSG(MASTERKEY);
 					}
 				}
@@ -410,7 +422,7 @@ int main(int argc, char *argv[])
 				int idFromQ = front(p3Queue);
 				for(w = 0; w < 18; w++)
 				{
-					if(slave[w].slaveID == idFromQ)
+					if(pcb[w].slaveID == idFromQ)
 					{
 						printf("Dispatching process with PID %d from Q 3 at time %d:%d,\n",idFromQ,sharedClock->seconds,sharedClock->nanoseconds);
 						//get dispatch time and update clock
@@ -426,7 +438,7 @@ int main(int argc, char *argv[])
 						sharedClock->seconds = sec;
 						sharedClock->nanoseconds = nano;
 						printf("total time this dispatch was %d nanoseconds.\n",dispatchTime);
-						sendMSG(idFromQ);
+						sendMSG(idFromQ,pcb[w].duration,pcb[w].progress,pcb[w].index,pcb[w].burstTime);
 						recMSG(MASTERKEY);
 					}
 				}
@@ -471,11 +483,17 @@ int main(int argc, char *argv[])
 }
 
 //function to send message to slave
-void sendMSG(int type)
+void sendMSG(int type,int dur,int prog,int sIndex,int burst)
 {
 	Message message;
 	int msgsize = sizeof(Message);
 	message.type = type;
+	message.duration = dur;
+	message.progress = prog;
+	message.index = sIndex;
+	message.burstTime = burst;
+	printf("inside master sendmsg: index = %d, duration = %d, progress = %d, burstTime = %d\n",message.index,message.duration,message.progress,message.burstTime);
+		
 	msgsnd(msgQueue,&message,msgsize,0);
 }
 
@@ -490,7 +508,7 @@ void recMSG(int type)
 	{
 		printf("inside block flag\n");
 		pcb[message.index].isBlocked = 1;
-		enqueue(bQueue,message.type);
+		enqueue(bQueue,message.pid);
 		if(pcb[message.index].priority == 0)
 		{
 			dequeue(rrQueue);
@@ -508,8 +526,8 @@ void recMSG(int type)
 			dequeue(p3Queue);
 		}
 
-		printf("Receiving that process with PID %ld ran for %d nanoseconds before getting blocked,\n",message.type,message.burstTime);
-		printf("moved process with PID %ld from Q %d to Block Q.\n",message.type,pcb[message.index].priority);
+		printf("Receiving that process with PID %d ran for %d nanoseconds before getting blocked,\n",message.pid,message.burstTime);
+		printf("moved process with PID %d from Q %d to Block Q.\n",message.pid,pcb[message.index].priority);
 	}
 	
 	else if(message.moveFlag == 1)
@@ -518,29 +536,29 @@ void recMSG(int type)
 		if(pcb[message.index].priority == 0)
 		{
 			dequeue(rrQueue);
-			enqueue(rrQueue,message.type);
-			printf("Receiving that process with PID %ld ran for %d nanoseconds and finished its timeslice,\n",message.type,message.burstTime);
+			enqueue(rrQueue,message.pid);
+			printf("Receiving that process with PID %d ran for %d nanoseconds and finished its timeslice,\n",message.pid,message.burstTime);
 			printf("placing at the end of Q 0.\n");
 		}
 		else if(pcb[message.index].priority == 1)
 		{
 			dequeue(p1Queue);
-			enqueue(p2Queue,message.type);
-			printf("Receiving that process with PID %ld ran for %d nanoseconds and finished its timeslice,\n",message.type,message.burstTime);
+			enqueue(p2Queue,message.pid);
+			printf("Receiving that process with PID %d ran for %d nanoseconds and finished its timeslice,\n",message.pid,message.burstTime);
 			printf("moving down to next queue, Q 2.\n");
 		}
 		else if(pcb[message.index].priority == 2)
 		{
 			dequeue(p2Queue);
-			enqueue(p3Queue,message.type);
-			printf("Receiving that process with PID %ld ran for %d nanoseconds and finished its timeslice,\n",message.type,message.burstTime);
+			enqueue(p3Queue,message.pid);
+			printf("Receiving that process with PID %d ran for %d nanoseconds and finished its timeslice,\n",message.pid,message.burstTime);
 			printf("moving down to next queue, Q 3.\n");
 		}
 		else
 		{
 			dequeue(p3Queue);
-			enqueue(p3Queue,message.type);
-			printf("Receiving that process with PID %ld ran for %d nanoseconds and finished its timeslice,\n",message.type,message.burstTime);
+			enqueue(p3Queue,message.pid);
+			printf("Receiving that process with PID %d ran for %d nanoseconds and finished its timeslice,\n",message.pid,message.burstTime);
 			printf("placing at the end of Q 3.\n");
 		}
 	}
@@ -551,25 +569,25 @@ void recMSG(int type)
 		{
 			pcb[message.index].slaveID = -1;
 			dequeue(rrQueue);
-			printf("Receiving that process with PID %ld ran for %d nanoseconds and was terminated.\n",message.type,message.burstTime);
+			printf("Receiving that process with PID %d ran for %d nanoseconds and was terminated.\n",message.pid,message.burstTime);
 		}
 		else if(pcb[message.index].priority == 1)
 		{
 			pcb[message.index].slaveID = -1;
 			dequeue(p1Queue);
-			printf("Receiving that process with PID %ld ran for %d nanoseconds and was terminated.\n",message.type,message.burstTime);
+			printf("Receiving that process with PID %d ran for %d nanoseconds and was terminated.\n",message.pid,message.burstTime);
 		}
 		else if(pcb[message.index].priority == 2)
 		{
 			pcb[message.index].slaveID = -1;
 			dequeue(p2Queue);
-			printf("Receiving that process with PID %ld ran for %d nanoseconds and was terminated.\n",message.type,message.burstTime);
+			printf("Receiving that process with PID %d ran for %d nanoseconds and was terminated.\n",message.pid,message.burstTime);
 		}
 		else
 		{
 			pcb[message.index].slaveID = -1;
 			dequeue(p3Queue);
-			printf("Receiving that process with PID %ld ran for %d nanoseconds and was terminated.\n",message.type,message.burstTime);
+			printf("Receiving that process with PID %d ran for %d nanoseconds and was terminated.\n",message.pid,message.burstTime);
 		}
 	}
 	else if(message.completeFlag == 1)
@@ -579,25 +597,25 @@ void recMSG(int type)
 		{
 			dequeue(rrQueue);
 			pcb[message.index].slaveID = -1;
-			printf("Receiving that process with PID %ld ran for %d nanoseconds and finished.\n",message.type,message.burstTime);
+			printf("Receiving that process with PID %d ran for %d nanoseconds and finished.\n",message.pid,message.burstTime);
 		}
 		else if(pcb[message.index].priority == 1)
 		{
 			pcb[message.index].slaveID = -1;
 			dequeue(p1Queue);
-			printf("Receiving that process with PID %ld ran for %d nanoseconds and finished.\n",message.type,message.burstTime);
+			printf("Receiving that process with PID %d ran for %d nanoseconds and finished.\n",message.pid,message.burstTime);
 		}
 		else if(pcb[message.index].priority == 2)
 		{
 			pcb[message.index].slaveID = -1;
 			dequeue(p2Queue);
-			printf("Receiving that process with PID %ld ran for %d nanoseconds and finished.\n",message.type,message.burstTime);
+			printf("Receiving that process with PID %d ran for %d nanoseconds and finished.\n",message.pid,message.burstTime);
 		}
 		else if(pcb[message.index].slaveID == 3)
 		{
 			pcb[message.index].slaveID = -1;
 			dequeue(p3Queue);
-			printf("Receiving that process with PID %ld ran for %d nanoseconds and finished.\n",message.type,message.burstTime);
+			printf("Receiving that process with PID %d ran for %d nanoseconds and finished.\n",message.pid,message.burstTime);
 		}
 		else
 		{
@@ -665,6 +683,19 @@ int getSpawnTime()
 	return spawnTime;
 }
 
+//function to get burstTime from quantum & priority
+int getBurst(int prio)
+{
+	if(prio == 0)
+	{
+		return RR_QUANTUM;
+	}
+	else
+	{
+		return Q1_QUANTUM;
+	}
+}
+
 //function to print slave info
 void printSlaveInfo(ProcessControlBlock* p)
 {
@@ -699,7 +730,6 @@ void alarm_Handler(int sig)
 		kill(slave[i].slaveID, SIGINT);	
 	}
 	
-//	while(wait(
 }
 
 //function to detach and remove shared memory -- from UNIX Book

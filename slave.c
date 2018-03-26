@@ -23,8 +23,8 @@ int processID;
 int setPriority(int p);
 void int_Handler(int sig);
 int completeCheck(int p, int d);
-void recMSG(int type);
-void sendMSG(int type,int found,int rTime, int bTime,int cFlag,int bFlag,int mFlag,int tFlag);	
+Message recMSG(int type);
+void sendMSG(int type,int found,int rTime, int bTime,int cFlag,int bFlag,int mFlag,int tFlag,int dur,int pr,int id);	
 
 int main(int argc, char *argv[])
 {	
@@ -61,19 +61,24 @@ int main(int argc, char *argv[])
 	
 	while(1)
 	{
-		recMSG(processID);
-		int i;
-		int foundIndex = -1;
+		Message msg;
+		msg = recMSG(processID);
+		int foundIndex = msg.index;
 		int quantum;
+		burstTime = msg.burstTime;
+		//priority = msg.priority;
+		duration = msg.duration;
 		int resume = 0;
 		int completeFlag = 0;
 		int blockFlag = 0;
 		int moveFlag = 0;
 		int terminateFlag = 0;
+		printf("inside slave: index: %d, burstTIme: %d, duration: %d\n",foundIndex,burstTime,duration);
+		/*
 		//get quantum value from pcb
 		for(i = 0; i < 18; i++)
 		{
-			printf("pcb[%d].slaveID = %d\n",i,pcb[i].slaveID);
+			printf("inside slave: pcb[%d].slaveID = %d\n",i,pcb[i].slaveID);
 			if(pcb[i].slaveID == processID)
 			{
 				foundIndex = i;
@@ -84,7 +89,7 @@ int main(int argc, char *argv[])
 				printf("processID %d found at index %d\n",processID, i);
 			}
 		}
-
+		*/
 		//terminate?
 		int terminate = (rand() % 1000) + 1;
 		if(terminate > 990)
@@ -93,7 +98,7 @@ int main(int argc, char *argv[])
 			quantum = burstTime;
 			burstTime = (rand() % quantum) + 1;
 			progress = progress + burstTime;
-			pcb[i].progress = progress;
+			//pcb[i].progress = progress;
 			terminateFlag = 1;
 		}
 		else
@@ -110,8 +115,8 @@ int main(int argc, char *argv[])
 				progress = progress + burstTime;
 				//roll resume time
 				resume = (rand() % 2000000000) + 1;
-				pcb[i].progress = progress;
-				pcb[i].isBlocked = 1;
+				//pcb[i].progress = progress;
+				//pcb[i].isBlocked = 1;
 				blockFlag = 1;
 			}
 			else
@@ -119,13 +124,13 @@ int main(int argc, char *argv[])
 				//no - compare progress to duration
 				burstTime = quantum;
 				progress = progress + burstTime;
-				pcb[i].progress = progress;
+				//pcb[i].progress = progress;
 				//if progress is  less than duration, set move flag
 				int complete = completeCheck(progress,duration);
 				if(complete == 0)
 				{
 					moveFlag = 1;
-					pcb[i].priority = setPriority(priority);
+					//pcb[i].priority = setPriority(priority);
 				}
 				else
 				{
@@ -137,7 +142,7 @@ int main(int argc, char *argv[])
 		}
 	
 		//send message to master
-		sendMSG(MASTERKEY,foundIndex,resume,burstTime,completeFlag,blockFlag,moveFlag,terminateFlag);	
+		sendMSG(MASTERKEY,foundIndex,resume,burstTime,completeFlag,blockFlag,moveFlag,terminateFlag,duration,progress,processID);	
 	}
 	return 0;
 
@@ -184,20 +189,26 @@ int completeCheck(int p, int d)
 }
 
 //function to recieve message from master
-void recMSG(int type)
+Message recMSG(int type)
 {
 	Message message;
 	int msgsize = sizeof(Message);
 	msgrcv(queue,&message,msgsize,type,0);
+		
+	printf("received message from master!\n");
+	printf("message index = %d, duration = %d, burstTime = %d\n",message.index,message.duration,message.burstTime);
+	
+	return message;
 }
 
 //function for sending message to master
 
-void sendMSG(int type,int found,int rTime,int bTime,int cFlag,int bFlag,int mFlag,int tFlag)
+void sendMSG(int type,int found,int rTime,int bTime,int cFlag,int bFlag,int mFlag,int tFlag,int dur,int pr,int id)
 {
 	Message message;
 	int msgsize = sizeof(Message);
 	message.type = type;
+	message.pid = id;
 	message.index = found;
 	printf("inside slave msg: index = %d\n",message.index);
 	message.resumeTime = rTime;
@@ -206,6 +217,8 @@ void sendMSG(int type,int found,int rTime,int bTime,int cFlag,int bFlag,int mFla
 	message.blockFlag = bFlag;
 	message.moveFlag = mFlag;
 	message.terminateFlag = tFlag;
+	message.duration = dur;
+	message.progress = pr;
 
 	msgsnd(queue,&message,msgsize,0);
  

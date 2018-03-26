@@ -31,6 +31,7 @@ typedef struct Slave
 	int duration;
 	int progress;
 	int burstTime;
+	int index;
 }
 Slave;
 
@@ -46,6 +47,7 @@ Clock;
 typedef struct Message
 {
         long type;
+	int pid;
         int index;
         int resumeTime;
 	int burstTime;
@@ -53,6 +55,9 @@ typedef struct Message
 	int blockFlag;
 	int moveFlag;
 	int terminateFlag;
+	int priority;
+	int duration;
+	int progress;
 }
 Message;
 
