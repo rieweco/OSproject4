@@ -64,6 +64,10 @@ almost all finished, message queue needs some adjustment in order to pass the ri
 need to change the send/rcv functions and probably the Message struct to pass the right info.
 finishing tomorrow
 ----------------------------------
+updated loops. need to adjust time for spawning processes so it doesnt lock while time is too short. 
+also need to add logfile operations. 
+almost done
+----------------------------------
 
 
 
