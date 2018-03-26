@@ -6,7 +6,8 @@
 //shared memory keys
 #define PCB_KEY 1000
 #define CLOCK_KEY 1400
-
+#define MASTERKEY 123
+#define QUEUEKEY 1227
 
 //pcb struct that holds the slave pid, number, priority, and isblocked
 typedef struct ProcessControlBlock
@@ -15,8 +16,10 @@ typedef struct ProcessControlBlock
         pid_t slaveID;
 	int priority;
 	int isBlocked;
-	int start;
-	int hasStarted;	
+	int burstTime;
+	int resumeTime;
+	int duration;
+	int progress;
 }
 ProcessControlBlock;
 
@@ -25,10 +28,9 @@ typedef struct Slave
 {
 	pid_t slaveID;
 	int priority;
-	int isBlockable;
 	int duration;
 	int progress;
-	int start;
+	int burstTime;
 }
 Slave;
 
@@ -40,18 +42,19 @@ typedef struct Clock
 }
 Clock;
 
-//child message struct that contains the message,
-//pid, time of process in ss:nn, and a flag for
-//signalling being in/out of the critical section 
-typedef struct PassedMessage
+//message struct that contains the message with values changed/set
+typedef struct Message
 {
-        long mtype;
-        int childNumber;
-        int seconds;
-        int nanoseconds;
-        int flag;
+        long type;
+        int index;
+        int resumeTime;
+	int burstTime;
+        int completeFlag;
+	int blockFlag;
+	int moveFlag;
+	int terminateFlag;
 }
-PassedMessage;
+Message;
 
 typedef struct Queue
 {
