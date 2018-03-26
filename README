@@ -60,6 +60,10 @@ created slave array in local memory to hold the actual processes, while pcb just
 created makefile -- working
 going to test updating clock
 ----------------------------------
+almost all finished, message queue needs some adjustment in order to pass the right info
+need to change the send/rcv functions and probably the Message struct to pass the right info.
+finishing tomorrow
+----------------------------------
 
 
 
