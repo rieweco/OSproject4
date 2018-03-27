@@ -6,6 +6,14 @@ GIT Repository:
 https://github.com/rieweco/OSproject4.git
 
 
+type make
+RUN: ./oss
+HELP: ./oss -h
+
+output goes to file named 'logfile' 
+the name of logfile can be changed using -l command
+
+
 -----------------------------------
 # Please enter the commit message for your changes. Lines starting
 # with '#' will be ignored, and an empty message aborts the commit.
