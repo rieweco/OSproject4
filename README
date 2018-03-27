@@ -68,6 +68,14 @@ updated loops. need to adjust time for spawning processes so it doesnt lock whil
 also need to add logfile operations. 
 almost done
 ----------------------------------
+project finished.
+./oss will run program
+saves output to log file
+3 successful runs in a row.
+submitting project
+---------------------------------
+---------------------------------
+
 
 
 

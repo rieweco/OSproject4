@@ -37,7 +37,6 @@ int main(int argc, char *argv[])
 	}
 	
 	printf("inside Slave\n");
-	//processID = argv[0];
 	processID = atoi(argv[1]);
 	printf("processID: %d\n",processID);
 	
@@ -65,31 +64,16 @@ int main(int argc, char *argv[])
 		msg = recMSG(processID);
 		int foundIndex = msg.index;
 		int quantum;
+		processID = msg.pid;
 		burstTime = msg.burstTime;
-		//priority = msg.priority;
 		duration = msg.duration;
 		int resume = 0;
 		int completeFlag = 0;
 		int blockFlag = 0;
 		int moveFlag = 0;
 		int terminateFlag = 0;
-		printf("inside slave: index: %d, burstTIme: %d, duration: %d\n",foundIndex,burstTime,duration);
-		/*
-		//get quantum value from pcb
-		for(i = 0; i < 18; i++)
-		{
-			printf("inside slave: pcb[%d].slaveID = %d\n",i,pcb[i].slaveID);
-			if(pcb[i].slaveID == processID)
-			{
-				foundIndex = i;
-				burstTime = pcb[i].burstTime;
-				progress = pcb[i].progress;
-				duration = pcb[i].duration;
-				priority = pcb[i].priority;
-				printf("processID %d found at index %d\n",processID, i);
-			}
-		}
-		*/
+		printf("inside slave: index: %d, burstTime: %d, duration: %d\n",foundIndex,burstTime,duration);
+		
 		//terminate?
 		int terminate = (rand() % 1000) + 1;
 		if(terminate > 990)
@@ -98,7 +82,6 @@ int main(int argc, char *argv[])
 			quantum = burstTime;
 			burstTime = (rand() % quantum) + 1;
 			progress = progress + burstTime;
-			//pcb[i].progress = progress;
 			terminateFlag = 1;
 		}
 		else
@@ -113,10 +96,9 @@ int main(int argc, char *argv[])
 				burstTime = ((rand() % 100) + 1) * quantum;
 				burstTime = burstTime/100;
 				progress = progress + burstTime;
+			
 				//roll resume time
 				resume = (rand() % 2000000000) + 1;
-				//pcb[i].progress = progress;
-				//pcb[i].isBlocked = 1;
 				blockFlag = 1;
 			}
 			else
@@ -125,19 +107,17 @@ int main(int argc, char *argv[])
 				int preBurst = progress;
 				burstTime = quantum;
 				progress = progress + burstTime;
-				//pcb[i].progress = progress;
+				
 				//if progress is  less than duration, set move flag
 				int complete = completeCheck(progress,duration);
 				if(complete == 0)
 				{
 					moveFlag = 1;
-					//pcb[i].priority = setPriority(priority);
 				}
 				else
 				{
 					burstTime = duration - preBurst;
 					printf("process complete, burstTime changed to %d\n",burstTime);
-					//progress >= duration, set done flag
 					completeFlag = 1;
 				}
 				
