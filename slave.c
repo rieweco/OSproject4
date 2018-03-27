@@ -122,6 +122,7 @@ int main(int argc, char *argv[])
 			else
 			{
 				//no - compare progress to duration
+				int preBurst = progress;
 				burstTime = quantum;
 				progress = progress + burstTime;
 				//pcb[i].progress = progress;
@@ -134,6 +135,8 @@ int main(int argc, char *argv[])
 				}
 				else
 				{
+					burstTime = duration - preBurst;
+					printf("process complete, burstTime changed to %d\n",burstTime);
 					//progress >= duration, set done flag
 					completeFlag = 1;
 				}
